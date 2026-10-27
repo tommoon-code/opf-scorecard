@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OPF Video Scorecard</title>
+<style>
+  :root { --ink:#111; --mut:#666; --line:#e5e5e5; --bad:#c62828; --ok:#111; }
+  * { box-sizing:border-box; } body { margin:0; font-family:-apple-system, Helvetica, Arial, sans-serif; color:var(--ink); background:#fafafa; }
+  header { padding:14px 18px; border-bottom:1px solid var(--line); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  header b { font-size:16px; } header span { color:var(--mut); font-size:13px; }
+  .wrap { display:grid; grid-template-columns: 1fr 1.2fr; gap:18px; padding:18px; max-width:1300px; margin:0 auto; }
+  @media (max-width:900px) { .wrap { grid-template-columns:1fr; } .sticky { position:static !important; } }
+  .sticky { position:sticky; top:12px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+  .list button { display:block; width:100%; text-align:left; padding:10px 12px; margin:6px 0; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; font-size:14px; }
+  .list button.done { color:var(--mut); } .list button.sel { border-color:var(--ink); }
+  .list small { display:block; color:var(--mut); }
+  .video { aspect-ratio:16/9; width:100%; border:0; background:#000; border-radius:6px; }
+  h3 { margin:14px 0 4px; font-size:15px; } h3 small { color:var(--mut); font-weight:normal; font-size:12px; margin-left:6px; }
+  .q { color:var(--mut); font-size:13px; margin:0 0 8px; }
+  .item { padding:10px 0; border-top:1px solid var(--line); }
+  .item .t { font-size:14px; } .item .c { font-size:12px; color:var(--mut); margin:2px 0 6px; }
+  .sc { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .sc button { width:38px; height:34px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:14px; cursor:pointer; }
+  .sc button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .sc .na { width:auto; padding:0 10px; color:var(--mut); font-size:12px; }
+  .note { width:100%; margin-top:6px; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:13px; }
+  .note.req { border-color:var(--bad); background:#fff6f6; }
+  .draft { font-size:11px; color:#a66; border:1px solid #e3c0c0; border-radius:4px; padding:1px 5px; margin-left:6px; }
+  .foot { display:flex; gap:10px; align-items:center; margin-top:14px; }
+  .btn { padding:10px 18px; border:0; background:var(--ink); color:#fff; border-radius:6px; font-size:14px; cursor:pointer; }
+  .btn[disabled] { opacity:.4; } .msg { font-size:13px; color:var(--mut); } .msg.err { color:var(--bad); }
+  input.w, select.w, textarea.w { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:13px; margin-top:4px; }
+  .tab { margin-right:12px; cursor:pointer; color:var(--mut); font-size:13px; } .tab.on { color:var(--ink); font-weight:600; text-decoration:underline; }
+  .ff label { display:block; font-size:13px; margin-top:10px; } .ff label small { color:var(--mut); } textarea.w { min-height:60px; font-family:inherit; }
+  .rules { font-size:12px; color:var(--mut); line-height:1.5; }
+</style></head>
+<body>
+<header><b>OPF Video Scorecard</b><span><span id="tabs"></span> <span id="who"></span></span></header>
+<div id="boot"><div class="card" style="margin:40px auto;max-width:520px">Loading...</div></div><template id="denied">
+<div class="card" style="margin:40px auto;max-width:520px">This link is not valid. Ask Tom for your personal scoring link.</div>
+</template><template id="apphtml">
+<div class="wrap">
+  <div>
+    <div class="sticky">
+      <div class="card"><b id="lhead">Videos to score</b><div class="list" id="list"></div>
+        <div class="rules" id="rules" style="margin-top:10px">Score every item 1 to 5. The gray line says what a 5, a 3 and a 1 look like. If unsure, score lower. Leave N/A if it does not apply. A 1 or a 2 needs a note with the shot or timecode. Score alone; nothing is discussed until the quarterly review.</div>
+      </div>
+      <div class="card" id="vbox" style="display:none"><iframe id="player" class="video" allow="autoplay; fullscreen"></iframe><div id="vlink" style="font-size:12px;margin-top:6px"></div></div>
+    </div>
+  </div>
+  <div>
+    <div class="card" id="form" style="display:none"></div>
+  </div>
+</div>
+</template><script type="text/plain" id="appjs">
+var P = window.__P;
+document.getElementById('who').textContent = P.rater + ' · ' + P.version;
+if (P.demo) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#fff4d6;padding:6px 18px;font-size:13px">DEMO: September 2026 test data. Changes here do not touch the real sheet.</div>');
+var cur = null, state = {};
+function embed(u) {
+  var m;
+  if ((m = u.match(/drive\.google\.com\/file\/d\/([^\/]+)/))) return 'https://drive.google.com/file/d/' + m[1] + '/preview';
+  if ((m = u.match(/vimeo\.com\/(\d+)/))) return 'https://player.vimeo.com/video/' + m[1];
+  if ((m = u.match(/(?:youtu\.be\/|v=)([\w-]{6,})/))) return 'https://www.youtube.com/embed/' + m[1];
+  return '';
+}
+function renderList() {
+  var L = document.getElementById('list'); L.innerHTML = '';
+  if (!P.videos.length) { L.innerHTML = '<div class="msg">No open videos for you right now.</div>'; return; }
+  P.videos.forEach(function (v) {
+    var b = document.createElement('button'); b.className = (v.submitted ? 'done ' : '') + (cur && cur.video_id === v.video_id ? 'sel' : '');
+    b.innerHTML = '<b>' + v.title + '</b><small>' + (v.brand ? v.brand + ' · ' : '') + v.type + ' · due ' + v.due_date + (v.submitted ? ' · submitted ' + v.submitted_at + ' (editable until due)' : '') + '</small>';
+    b.onclick = function () { pick(v); }; L.appendChild(b);
+  });
+}
+function applies(it, type) { return String(it.applies_to).split(',').map(function (s) { return s.trim(); }).some(function (a) { return a === 'ALL' || a.toLowerCase() === String(type).toLowerCase(); }); }
+function pick(v) {
+  cur = v; state = {}; renderList();
+  var vb = document.getElementById('vbox'), e = embed(v.video_url);
+  vb.style.display = 'block'; document.getElementById('player').src = e; document.getElementById('player').style.display = e ? 'block' : 'none';
+  document.getElementById('vlink').innerHTML = v.video_url ? '<a href="' + v.video_url + '" target="_blank">Open video in new tab</a>' : 'No video link yet.';
+  var F = document.getElementById('form'); F.style.display = 'block';
+  var h = '<b>' + v.title + '</b> <span class="msg">' + (v.brand ? v.brand + ' · ' : '') + v.type + ' · ' + v.month + '</span>';
+  var sections = []; P.items.forEach(function (it) { if (applies(it, v.type) && sections.indexOf(it.section) < 0) sections.push(it.section); });
+  var qs = { 'Capture': 'Was the footage clean enough that the edit never had to hide it?', 'Finish': 'Does the color and sound feel like one piece?', 'Delivery': 'Did it leave the building right?' };
+  sections.forEach(function (sec) {
+    var draft = P.items.filter(function (i) { return i.section === sec; })[0].in_total !== 'yes';
+    h += '<h3>' + sec + (draft ? '<span class="draft">DRAFT, not in total</span>' : '') + '</h3>' + (qs[sec] ? '<p class="q">' + qs[sec] + '</p>' : '');
+    P.items.filter(function (it) { return it.section === sec && applies(it, v.type); }).forEach(function (it) {
+      var prev = v.scores[it.item_id] || {}; state[it.item_id] = { score: prev.score === undefined || prev.score === '' ? '' : Number(prev.score), note: prev.note || '' };
+      h += '<div class="item" id="it_' + it.item_id + '"><div class="t">' + it.item + '</div><div class="c">' + it.criteria + ' <b>' + it.scale_5_3_1 + '</b></div><div class="sc">';
+      [1, 2, 3, 4, 5].forEach(function (n) { h += '<button type="button" onclick="setScore(\'' + it.item_id + '\',' + n + ')" id="b_' + it.item_id + '_' + n + '">' + n + '</button>'; });
+      h += '<button type="button" class="na" onclick="setScore(\'' + it.item_id + '\',\'\')" id="b_' + it.item_id + '_na">N/A</button></div>';
+      h += '<input class="note" id="n_' + it.item_id + '" placeholder="note (required for 1 or 2): shot or timecode" oninput="state[\'' + it.item_id + '\'].note=this.value" value="' + String(state[it.item_id].note).replace(/"/g, '&quot;') + '"></div>';
+    });
+  });
+  var s = v.scores;
+  h += '<h3>Wrap up</h3>';
+  h += '<div class="item"><div class="t">Best shot or moment, with timecode</div><input class="w" id="best_shot" value="' + ((s.best_shot || {}).note || '').replace(/"/g, '&quot;') + '"></div>';
+  h += '<div class="item"><div class="t">First thing to fix, with timecode</div><input class="w" id="first_fix" value="' + ((s.first_fix || {}).note || '').replace(/"/g, '&quot;') + '"></div>';
+  var pf = (s.portfolio || {}).note || '';
+  h += '<div class="item"><div class="t">Portfolio</div><select class="w" id="portfolio"><option value="">choose</option>' + ['yes', 'no', 'after fixes'].map(function (o) { return '<option' + (pf === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></div>';
+  h += '<div class="foot"><button class="btn" id="send" onclick="send()">Submit</button><span class="msg" id="msg"></span></div>';
+  F.innerHTML = h;
+  Object.keys(state).forEach(function (id) { paint(id); });
+  window.scrollTo(0, 0);
+}
+function setScore(id, n) { state[id].score = n; paint(id); }
+function paint(id) {
+  var st = state[id];
+  [1, 2, 3, 4, 5].forEach(function (n) { var b = document.getElementById('b_' + id + '_' + n); if (b) b.className = st.score === n ? 'on' : ''; });
+  var na = document.getElementById('b_' + id + '_na'); if (na) na.className = 'na' + (st.score === '' ? ' on' : '');
+  var note = document.getElementById('n_' + id); if (note) note.className = 'note' + (st.score !== '' && st.score <= 2 ? ' req' : '');
+}
+function send() {
+  var missing = Object.keys(state).filter(function (id) { return state[id].score !== '' && state[id].score <= 2 && !state[id].note.trim(); });
+  var M = document.getElementById('msg');
+  if (missing.length) { M.className = 'msg err'; M.textContent = 'A 1 or a 2 needs a note: ' + missing.length + ' item(s) marked red.'; missing.forEach(paint); document.getElementById('it_' + missing[0]).scrollIntoView({ behavior: 'smooth' }); return; }
+  var scored = Object.keys(state).filter(function (id) { return state[id].score !== ''; }).length;
+  if (!scored) { M.className = 'msg err'; M.textContent = 'Nothing scored yet.'; return; }
+  var req = { demo: P.demo ? '1' : '', rater: P.rater, key: P.key, video_id: cur.video_id, scores: Object.keys(state).map(function (id) { return { item_id: id, score: state[id].score, note: state[id].note }; }),
+    best_shot: document.getElementById('best_shot').value, first_fix: document.getElementById('first_fix').value, portfolio: document.getElementById('portfolio').value };
+  document.getElementById('send').disabled = true; M.className = 'msg'; M.textContent = 'Saving...';
+  google.script.run.withSuccessHandler(function (r) {
+    document.getElementById('send').disabled = false;
+    if (r && r.ok) { M.textContent = 'Saved (' + r.rows + ' rows). You can edit until the due date.'; cur.submitted = true; cur.submitted_at = new Date().toISOString().slice(0, 10); Object.keys(state).forEach(function (id) { cur.scores[id] = { score: state[id].score, note: state[id].note }; }); renderList(); }
+    else { M.className = 'msg err'; M.textContent = 'Not saved: ' + (r && r.error || 'unknown'); }
+  }).withFailureHandler(function (e) { document.getElementById('send').disabled = false; M.className = 'msg err'; M.textContent = 'Error: ' + e.message; }).submit(req);
+}
+var FACTQ = [
+  ['video_url', 'Video link (Frame.io: click the thumbnail once, copy the address)', 'text', ''], ['video', 'Video title', 'text', ''],
+  ['brand', 'Brand', 'select', '|OPF|Foxtail'], ['type', 'Type', 'select', '|Event|Wedding|AI|Promo'],
+  ['client', 'Client', 'text', ''], ['delivered', 'Delivered', 'date', ''], ['runtime', 'Runtime', 'text', 'e.g. 01:29'],
+  ['total_hours', 'Total hours, shoot + edit + revisions', 'text', 'e.g. shoot 2h, edit 4h, revision 1h'], ['edit_hours', 'Of which edit hours', 'text', ''],
+  ['revision_rounds', 'Revision rounds after first delivery', 'text', ''], ['rounds_in_contract', 'Rounds in contract', 'text', ''],
+  ['revision_cause', 'Main cause of revisions', 'select', '|none|us|client changed mind|unclear brief|mixed'],
+  ['lufs', 'Delivered loudness, LUFS', 'text', 'target about -14 social, -23 broadcast'],
+  ['client_words', 'Client reaction, their words pasted, not interpreted', 'area', ''], ['flagged', 'What they flagged', 'area', ''], ['praised', 'What they praised', 'area', ''],
+  ['rebooked', 'Outcome (3 months later): rebooked or referred', 'select', '|yes|no|in progress'], ['posted_response', "Posted on client's channel, and the response", 'area', '']
+];
+var mode = 'score';
+function tabs() {
+  if (P.role !== 'editor' && P.role !== 'owner') return;
+  var t = [['score', 'Score'], ['facts', 'Fact sheets']]; if (P.role === 'owner') t.push(['review', 'Quarterly review']);
+  document.getElementById('tabs').innerHTML = t.map(function (x) { return '<span class="tab' + (mode === x[0] ? ' on' : '') + '" onclick="setMode(\'' + x[0] + '\')">' + x[1] + '</span>'; }).join('');
+}
+function setMode(m) { mode = m; document.getElementById('lhead').textContent = m === 'facts' ? 'Fact sheets, this month' : m === 'review' ? 'Quarter' : 'Videos to score'; document.querySelector('.wrap').style.gridTemplateColumns = m === 'review' ? '220px 1fr' : ''; document.getElementById('rules').style.display = m === 'score' ? '' : 'none'; cur = null; tabs(); document.getElementById('form').style.display = 'none'; document.getElementById('vbox').style.display = 'none'; m === 'facts' ? renderFacts() : m === 'review' ? renderQuarters() : renderList(); }
+function esc(x) { return String(x || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function factState(v) {
+  var f = P.facts[v.video_id], st = f ? String(f.fact_status || 'submitted') : '';
+  if (!f) return '<span style="color:#c62828">fact sheet missing</span>';
+  if (st === 'approved') return 'approved by Tom ' + esc(f.approved_at || '') + ', raters can score';
+  if (st === 'approved, edited after') return '<span style="color:#b8860b">edited after approval, Tom to recheck</span>';
+  return '<span style="color:#b8860b">waiting for Tom</span>';
+}
+function renderFacts() {
+  var L = document.getElementById('list'); L.innerHTML = '';
+  var add = document.createElement('button'); add.innerHTML = '<b>+ New fact sheet</b><small>Pick a delivered video, paste its link, fill the facts. Raters see it after Tom approves.</small>'; add.onclick = function () { pickFact(null); }; L.appendChild(add);
+  P.evideos.forEach(function (v) {
+    var f = P.facts[v.video_id], b = document.createElement('button');
+    b.className = (f && String(f.fact_status).indexOf('approved') === 0) ? 'done' : '';
+    b.innerHTML = '<b>' + esc(v.title) + '</b><small>' + v.video_id + ' · ' + esc(v.type) + ' · ' + v.month + ' · ' + factState(v) + '</small>';
+    b.onclick = function () { pickFact(v); }; L.appendChild(b);
+  });
+  if (document.getElementById('form').style.display !== 'block') pickFact(null);
+}
+function pickFact(v) {
+  var f = v ? (P.facts[v.video_id] || { video: v.title, video_url: v.video_url, brand: v.brand, type: v.type }) : {};
+  var F = document.getElementById('form'); F.style.display = 'block';
+  var h = '<b>' + (v ? esc(v.title) + ' <span class="msg">' + v.video_id + '</span>' : 'New video') + '</b><p class="q">One per video. Facts only, about two minutes. Read at the quarterly review next to the scores.</p><div class="ff">';
+  FACTQ.forEach(function (q) {
+    var val = f[q[0]] || '';
+    h += '<label>' + q[1] + (q[2] !== 'select' && q[3] ? ' <small>' + q[3] + '</small>' : '');
+    if (q[2] === 'select') h += '<select class="w" id="f_' + q[0] + '">' + q[3].split('|').map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>';
+    else if (q[2] === 'area') h += '<textarea class="w" id="f_' + q[0] + '">' + esc(val) + '</textarea>';
+    else h += '<input class="w" type="' + (q[2] === 'date' ? 'date' : 'text') + '" id="f_' + q[0] + '" value="' + esc(val) + '">';
+    h += '</label>';
+  });
+  var owner = P.role === 'owner', st = v && P.facts[v.video_id] ? String(P.facts[v.video_id].fact_status || '') : '';
+  h += '</div><div class="foot"><button class="btn" id="fsend">' + (owner ? 'Save' : 'Save and send to Tom') + '</button>' +
+    (owner && v ? '<button class="btn" id="fappr" style="background:#2e7d32">' + (st === 'approved' ? 'Approved (save edits again)' : 'Approve and open for scoring') + '</button>' : '') +
+    '<span class="msg" id="fmsg"></span></div>' + (owner ? '' : '<p class="msg">Tom checks every fact sheet. The video reaches the raters after he approves it.</p>');
+  F.innerHTML = h;
+  document.getElementById('fsend').onclick = function () { saveFact(v); };
+  if (document.getElementById('fappr')) document.getElementById('fappr').onclick = function () { saveFact(v, true); };
+  var vb = document.getElementById('vbox'), url = f.video_url || ''; vb.style.display = url ? 'block' : 'none';
+  if (url) { var e = embed(url); document.getElementById('player').src = e; document.getElementById('player').style.display = e ? 'block' : 'none'; document.getElementById('vlink').innerHTML = '<a href="' + esc(url) + '" target="_blank">Open video in new tab</a>'; }
+  window.scrollTo(0, 0);
+}
+function saveFact(v, approve) {
+  var fact = {}; FACTQ.forEach(function (q) { fact[q[0]] = document.getElementById('f_' + q[0]).value; });
+  var M = document.getElementById('fmsg');
+  if (!fact.video.trim() || !fact.type) { M.className = 'msg err'; M.textContent = 'Video title and type are required.'; return; }
+  document.getElementById('fsend').disabled = true; M.className = 'msg'; M.textContent = 'Saving...';
+  google.script.run.withSuccessHandler(function (r) {
+    document.getElementById('fsend').disabled = false;
+    if (r && r.ok) {
+      fact.fact_status = r.fact_status; fact.approved_at = (P.facts[r.video_id] || {}).approved_at || ''; P.facts[r.video_id] = fact;
+      M.textContent = 'Saved as ' + r.video_id + (P.role === 'owner' ? '.' : ', sent to Tom for a check.');
+      if (approve) {
+        M.textContent = 'Approving...';
+        google.script.run.withSuccessHandler(function (a) {
+          if (a && a.ok) { P.facts[r.video_id].fact_status = 'approved'; P.facts[r.video_id].approved_at = a.approved_at; M.textContent = 'Approved. Raters can score it now.'; renderFacts(); }
+          else { M.className = 'msg err'; M.textContent = 'Not approved: ' + (a && a.error || 'unknown'); }
+        }).withFailureHandler(function (e) { M.className = 'msg err'; M.textContent = 'Error: ' + e.message; }).approveFact({ demo: P.demo ? '1' : '', rater: P.rater, key: P.key, video_id: r.video_id });
+      }
+      var ex = P.evideos.filter(function (x) { return x.video_id === r.video_id; })[0];
+      if (ex) { ex.title = fact.video; ex.type = fact.type; ex.brand = fact.brand; ex.video_url = fact.video_url; }
+      else P.evideos.push({ video_id: r.video_id, title: fact.video, type: fact.type, brand: fact.brand, video_url: fact.video_url, month: new Date().toISOString().slice(0, 7) });
+      renderFacts();
+    } else { M.className = 'msg err'; M.textContent = 'Not saved: ' + (r && r.error || 'unknown'); }
+  }).withFailureHandler(function (e) { document.getElementById('fsend').disabled = false; M.className = 'msg err'; M.textContent = 'Error: ' + e.message; }).saveFact({ demo: P.demo ? '1' : '', rater: P.rater, key: P.key, video_id: v ? v.video_id : '', fact: fact });
+}
+function renderQuarters() {
+  var L = document.getElementById('list'); L.innerHTML = '';
+  if (!P.quarters.length) { L.innerHTML = '<div class="msg">No scores yet.</div>'; return; }
+  P.quarters.forEach(function (q, i) { var b = document.createElement('button'); b.innerHTML = '<b>' + q + '</b>'; b.onclick = function () { loadReview(q); }; L.appendChild(b); });
+  loadReview(P.quarters[0]);
+}
+function bar(v) { var w = Math.max(0, Math.min(100, (v - 1) / 4 * 100)); var c = v < 3 ? '#c62828' : v < 3.8 ? '#b8860b' : '#2e7d32'; return '<span style="display:inline-block;width:120px;height:8px;background:#eee;border-radius:4px;vertical-align:middle;margin-right:8px"><span style="display:block;width:' + w + '%;height:8px;background:' + c + ';border-radius:4px"></span></span><b>' + v.toFixed(1) + '</b>'; }
+function loadReview(q) {
+  var F = document.getElementById('form'); F.style.display = 'block'; F.innerHTML = '<span class="msg">Loading ' + q + '...</span>';
+  google.script.run.withSuccessHandler(function (r) {
+    if (!r || !r.ok) { F.innerHTML = '<span class="msg err">' + (r && r.error) + '</span>'; return; }
+    var h = '<b>' + r.quarter + ' review</b> <span class="msg">' + r.videos.length + ' videos · raters: ' + r.raters.join(', ') + ' · Signature drafts excluded</span>';
+    h += '<h3>Lowest items</h3><p class="q">Average across all raters and videos. Notes are what the raters wrote on a 1 or a 2.</p>';
+    r.low.forEach(function (x) {
+      h += '<div class="item"><div class="t">' + bar(x.avg) + ' &nbsp;' + esc(x.item) + ' <span class="msg">' + esc(x.section) + ' · n=' + x.n + '</span></div>';
+      if (x.notes.length) h += '<div class="c">' + x.notes.map(function (n) { return '<b>' + esc(n.v) + '</b> ' + n.r + ': ' + esc(n.t); }).join('<br>') + '</div>';
+      h += '</div>';
+    });
+    h += '<h3>Sections</h3>'; r.sections.forEach(function (x) { h += '<div class="item"><div class="t">' + bar(x.avg) + ' &nbsp;' + esc(x.section) + ' <span class="msg">n=' + x.n + '</span></div></div>'; });
+    h += '<h3>Videos</h3><p class="q">Average per rater. A spread of 1.0 or more means the raters read the rubric differently: talk about it first.</p>';
+    r.videos.forEach(function (v) {
+      h += '<div class="item"><div class="t">' + bar(v.avg) + ' &nbsp;<b>' + esc(v.title) + '</b> <span class="msg">' + v.video_id + ' · ' + esc(v.type) + '</span>' + (v.spread >= 1 ? ' <span class="draft">spread ' + v.spread.toFixed(1) + '</span>' : '') + '</div>';
+      h += '<div class="c">' + Object.keys(v.raters).map(function (k) { return k + ' ' + v.raters[k].toFixed(1); }).join(' · ') + '</div>';
+      var f = []; if (v.hours) f.push('Hours: ' + esc(v.hours)); if (v.revisions !== '') f.push('Revisions: ' + esc(v.revisions) + (v.cause && v.cause !== 'none' ? ' (' + esc(v.cause) + ')' : '')); if (v.praised && v.praised !== 'none') f.push('Client praised: ' + esc(v.praised)); if (v.flagged && v.flagged !== 'none') f.push('Client flagged: ' + esc(v.flagged)); if (v.rebooked) f.push('Rebooked: ' + esc(v.rebooked));
+      if (f.length) h += '<div class="c">' + f.join('<br>') + '</div>';
+      if (v.summary.length) h += '<div class="c">' + v.summary.map(function (s) { return s.r + ' ' + ({ best_shot: 'best', first_fix: 'fix first', portfolio: 'portfolio' }[s.k] || s.k) + ': ' + esc(s.t); }).join('<br>') + '</div>';
+      h += '</div>';
+    });
+    F.innerHTML = h;
+  }).withFailureHandler(function (e) { F.innerHTML = '<span class="msg err">' + e.message + '</span>'; }).review({ demo: P.demo ? '1' : '', rater: P.rater, key: P.key, quarter: q });
+}
+
+tabs();
+if (P.view === 'facts' && (P.role === 'editor' || P.role === 'owner')) setMode('facts'); else renderList();
+</script>
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbxvGz6bzBRunyv2593O8Ix7PKRf80C2zYZpdNb-flA_QHzJ35OLheu5UNA9JPAQYHqogw/exec';
+function apiCall(fn, arg) {
+  return fetch(API, { method: 'POST', credentials: 'omit', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, arg: arg }) })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+}
+window.google = { script: { run: { withSuccessHandler: function (s) {
+  var f = null, o = { withFailureHandler: function (h) { f = h; return o; } };
+  ['submit', 'saveFact', 'approveFact', 'review'].forEach(function (fn) { o[fn] = function (arg) { apiCall(fn, arg).then(function (r) { s && s(r); }).catch(function (e) { f && f(e); }); }; });
+  return o;
+} } } };
+(function () {
+  var q = new URLSearchParams(location.search);
+  var req = { fn: 'init', rater: q.get('rater') || '', k: q.get('k') || '', demo: q.get('demo') || '', view: q.get('view') || '' };
+  var show = function (html) { document.getElementById('boot').innerHTML = html; };
+  fetch(API, { method: 'POST', credentials: 'omit', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(req) })
+    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) { show(document.getElementById('denied').innerHTML); return; }
+      window.__P = r.payload;
+      document.getElementById('boot').innerHTML = document.getElementById('apphtml').innerHTML;
+      (0, eval)(document.getElementById('appjs').textContent);
+    })
+    .catch(function (e) { show('<div class="card" style="margin:40px auto;max-width:520px">Could not load (' + e.message + '). Check your connection and reload.</div>'); });
+})();
+</script></body></html>
