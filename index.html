@@ -147,13 +147,13 @@ function esc(x) { return String(x || '').replace(/&/g, '&amp;').replace(/"/g, '&
 function factState(v) {
   var f = P.facts[v.video_id], st = f ? String(f.fact_status || 'submitted') : '';
   if (!f) return '<span style="color:#c62828">fact sheet missing</span>';
-  if (st === 'approved') return 'approved by Tom ' + esc(f.approved_at || '') + ', raters can score';
-  if (st === 'approved, edited after') return '<span style="color:#b8860b">edited after approval, Tom to recheck</span>';
-  return '<span style="color:#b8860b">waiting for Tom</span>';
+  if (st === 'approved') return 'open for scoring';
+  if (st === 'approved, edited after') return '<span style="color:#b8860b">edited</span>';
+  return '<span style="color:#b8860b">submitted</span>';
 }
 function renderFacts() {
   var L = document.getElementById('list'); L.innerHTML = '';
-  var add = document.createElement('button'); add.innerHTML = '<b>+ New fact sheet</b><small>Pick a delivered video, paste its link, fill the facts. Raters see it after Tom approves.</small>'; add.onclick = function () { pickFact(null); }; L.appendChild(add);
+  var add = document.createElement('button'); add.innerHTML = '<b>+ New fact sheet</b><small>Pick a delivered video, paste its link, fill the facts.</small>'; add.onclick = function () { pickFact(null); }; L.appendChild(add);
   P.evideos.forEach(function (v) {
     var f = P.facts[v.video_id], b = document.createElement('button');
     b.className = (f && String(f.fact_status).indexOf('approved') === 0) ? 'done' : '';
@@ -175,9 +175,9 @@ function pickFact(v) {
     h += '</label>';
   });
   var owner = P.role === 'owner', st = v && P.facts[v.video_id] ? String(P.facts[v.video_id].fact_status || '') : '';
-  h += '</div><div class="foot"><button class="btn" id="fsend">' + (owner ? 'Save' : 'Save and send to Tom') + '</button>' +
-    (owner && v ? '<button class="btn" id="fappr" style="background:#2e7d32">' + (st === 'approved' ? 'Approved (save edits again)' : 'Approve and open for scoring') + '</button>' : '') +
-    '<span class="msg" id="fmsg"></span></div>' + (owner ? '' : '<p class="msg">Tom checks every fact sheet. The video reaches the raters after he approves it.</p>');
+  h += '</div><div class="foot"><button class="btn" id="fsend">' + 'Save' + '</button>' +
+    (owner && v ? '<button class="btn" id="fappr" style="background:#2e7d32">' + (st === 'approved' ? 'Open for scoring (saved)' : 'Open for scoring') + '</button>' : '') +
+    '<span class="msg" id="fmsg"></span></div>' + '';
   F.innerHTML = h;
   document.getElementById('fsend').onclick = function () { saveFact(v); };
   if (document.getElementById('fappr')) document.getElementById('fappr').onclick = function () { saveFact(v, true); };
@@ -194,12 +194,12 @@ function saveFact(v, approve) {
     document.getElementById('fsend').disabled = false;
     if (r && r.ok) {
       fact.fact_status = r.fact_status; fact.approved_at = (P.facts[r.video_id] || {}).approved_at || ''; P.facts[r.video_id] = fact;
-      M.textContent = 'Saved as ' + r.video_id + (P.role === 'owner' ? '.' : ', sent to Tom for a check.');
+      M.textContent = 'Saved as ' + r.video_id + (P.role === 'owner' ? '.' : '.');
       if (approve) {
-        M.textContent = 'Approving...';
+        M.textContent = 'Opening...';
         google.script.run.withSuccessHandler(function (a) {
-          if (a && a.ok) { P.facts[r.video_id].fact_status = 'approved'; P.facts[r.video_id].approved_at = a.approved_at; M.textContent = 'Approved. Raters can score it now.'; renderFacts(); }
-          else { M.className = 'msg err'; M.textContent = 'Not approved: ' + (a && a.error || 'unknown'); }
+          if (a && a.ok) { P.facts[r.video_id].fact_status = 'approved'; P.facts[r.video_id].approved_at = a.approved_at; M.textContent = 'Open for scoring.'; renderFacts(); }
+          else { M.className = 'msg err'; M.textContent = 'Not opened: ' + (a && a.error || 'unknown'); }
         }).withFailureHandler(function (e) { M.className = 'msg err'; M.textContent = 'Error: ' + e.message; }).approveFact({ demo: P.demo ? '1' : '', rater: P.rater, key: P.key, video_id: r.video_id });
       }
       var ex = P.evideos.filter(function (x) { return x.video_id === r.video_id; })[0];
