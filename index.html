@@ -18,7 +18,11 @@
   .item { padding:10px 0; border-top:1px solid var(--line); }
   .item .t { font-size:14px; } .item .c { font-size:12px; color:var(--mut); margin:2px 0 6px; }
   .sc { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-  .sc button { width:38px; height:34px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:14px; cursor:pointer; }
+  .sc button { width:58px; min-height:44px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:14px; cursor:pointer; line-height:1.15; padding:3px 2px; }
+  .sc button small { display:block; font-size:10px; color:var(--mut); margin-top:2px; white-space:normal; }
+  .sc button.on small { color:#ddd; }
+  .sc button.lo { border-color:#e3b4b4; } .sc button.hi { border-color:#a9d3b0; }
+  .scl { display:flex; justify-content:space-between; width:310px; font-size:10px; color:var(--mut); margin:4px 0 3px; }
   .sc button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
   .sc .na { width:auto; padding:0 10px; color:var(--mut); font-size:12px; }
   .note { width:100%; margin-top:6px; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:13px; }
@@ -41,7 +45,7 @@
   <div>
     <div class="sticky">
       <div class="card"><b id="lhead">Videos to score</b><div class="list" id="list"></div>
-        <div class="rules" id="rules" style="margin-top:10px">Score every item 1 to 5. The gray line says what a 5, a 3 and a 1 look like. If unsure, score lower. Leave N/A if it does not apply. A 1 or a 2 needs a note with the shot or timecode. Score alone; nothing is discussed until the quarterly review.</div>
+        <div class="rules" id="rules" style="margin-top:10px">Score every item 1 to 5. <b>1 is worst, 5 is best.</b> The small text under 1, 3 and 5 says what that score looks like. If unsure, score lower. Leave N/A if it does not apply. A 1 or a 2 needs a note with the shot or timecode. Score alone; nothing is discussed until the quarterly review.</div>
       </div>
       <div class="card" id="vbox" style="display:none"><iframe id="player" class="video" allow="autoplay; fullscreen"></iframe><div id="vlink" style="font-size:12px;margin-top:6px"></div></div>
     </div>
@@ -86,8 +90,9 @@ function pick(v) {
     h += '<h3>' + sec + (draft ? '<span class="draft">DRAFT, not in total</span>' : '') + '</h3>' + (qs[sec] ? '<p class="q">' + qs[sec] + '</p>' : '');
     P.items.filter(function (it) { return it.section === sec && applies(it, v.type); }).forEach(function (it) {
       var prev = v.scores[it.item_id] || {}; state[it.item_id] = { score: prev.score === undefined || prev.score === '' ? '' : Number(prev.score), note: prev.note || '' };
-      h += '<div class="item" id="it_' + it.item_id + '"><div class="t">' + it.item + '</div><div class="c">' + it.criteria + ' <b>' + it.scale_5_3_1 + '</b></div><div class="sc">';
-      [1, 2, 3, 4, 5].forEach(function (n) { h += '<button type="button" onclick="setScore(\'' + it.item_id + '\',' + n + ')" id="b_' + it.item_id + '_' + n + '">' + n + '</button>'; });
+      h += '<div class="item" id="it_' + it.item_id + '"><div class="t">' + it.item + '</div><div class="c">' + it.criteria + '</div><div class="scl"><span>1 = worst</span><span>5 = best</span></div><div class="sc">';
+      var an = String(it.scale_5_3_1 || '').split('/').map(function (x) { return x.trim(); }), lab = { 5: an[0] || '', 3: an[1] || '', 1: an[2] || '' };
+      [1, 2, 3, 4, 5].forEach(function (n) { h += '<button type="button" class="' + (n <= 2 ? 'lo' : n === 5 ? 'hi' : '') + '" onclick="setScore(\'' + it.item_id + '\',' + n + ')" id="b_' + it.item_id + '_' + n + '">' + n + (lab[n] ? '<small>' + lab[n] + '</small>' : '') + '</button>'; });
       h += '<button type="button" class="na" onclick="setScore(\'' + it.item_id + '\',\'\')" id="b_' + it.item_id + '_na">N/A</button></div>';
       h += '<input class="note" id="n_' + it.item_id + '" placeholder="note (required for 1 or 2): shot or timecode" oninput="state[\'' + it.item_id + '\'].note=this.value" value="' + String(state[it.item_id].note).replace(/"/g, '&quot;') + '"></div>';
     });
@@ -106,7 +111,7 @@ function pick(v) {
 function setScore(id, n) { state[id].score = n; paint(id); }
 function paint(id) {
   var st = state[id];
-  [1, 2, 3, 4, 5].forEach(function (n) { var b = document.getElementById('b_' + id + '_' + n); if (b) b.className = st.score === n ? 'on' : ''; });
+  [1, 2, 3, 4, 5].forEach(function (n) { var b = document.getElementById('b_' + id + '_' + n); if (b) b.className = (n <= 2 ? 'lo' : n === 5 ? 'hi' : '') + (st.score === n ? ' on' : ''); });
   var na = document.getElementById('b_' + id + '_na'); if (na) na.className = 'na' + (st.score === '' ? ' on' : '');
   var note = document.getElementById('n_' + id); if (note) note.className = 'note' + (st.score !== '' && st.score <= 2 ? ' req' : '');
 }
