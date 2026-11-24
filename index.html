@@ -75,20 +75,20 @@ function renderList() {
     b.onclick = function () { pick(v); }; L.appendChild(b);
   });
 }
-function applies(it, type) { return String(it.applies_to).split(',').map(function (s) { return s.trim(); }).some(function (a) { return a === 'ALL' || a.toLowerCase() === String(type).toLowerCase(); }); }
+function applies(it, type, fmt) { if (/^reel/i.test(String(fmt || '')) && String(it.skip_reel || '').toLowerCase() === 'yes') return false; return String(it.applies_to).split(',').map(function (s) { return s.trim(); }).some(function (a) { return a === 'ALL' || a.toLowerCase() === String(type).toLowerCase(); }); }
 function pick(v) {
   cur = v; state = {}; renderList();
   var vb = document.getElementById('vbox'), e = embed(v.video_url);
   vb.style.display = 'block'; document.getElementById('player').src = e; document.getElementById('player').style.display = e ? 'block' : 'none';
   document.getElementById('vlink').innerHTML = v.video_url ? '<a href="' + v.video_url + '" target="_blank">Open video in new tab</a>' : 'No video link yet.';
   var F = document.getElementById('form'); F.style.display = 'block';
-  var h = '<b>' + v.title + '</b> <span class="msg">' + (v.brand ? v.brand + ' · ' : '') + v.type + ' · ' + v.month + '</span>';
-  var sections = []; P.items.forEach(function (it) { if (applies(it, v.type) && sections.indexOf(it.section) < 0) sections.push(it.section); });
+  var h = '<b>' + v.title + '</b> <span class="msg">' + (v.brand ? v.brand + ' · ' : '') + v.type + (v.format ? ' · ' + v.format : '') + ' · ' + v.month + '</span>' + (/^reel/i.test(v.format || '') ? '<p class="q">Reel / short: items a short cut cannot hold (vows and speeches, quiet moment) are left out.</p>' : '');
+  var sections = []; P.items.forEach(function (it) { if (applies(it, v.type, v.format) && sections.indexOf(it.section) < 0) sections.push(it.section); });
   var qs = { 'Capture': 'Was the footage clean enough that the edit never had to hide it?', 'Finish': 'Does the color and sound feel like one piece?', 'Delivery': 'Did it leave the building right?' };
   sections.forEach(function (sec) {
     var draft = P.items.filter(function (i) { return i.section === sec; })[0].in_total !== 'yes';
     h += '<h3>' + sec + (draft ? '<span class="draft">DRAFT, not in total</span>' : '') + '</h3>' + (qs[sec] ? '<p class="q">' + qs[sec] + '</p>' : '');
-    P.items.filter(function (it) { return it.section === sec && applies(it, v.type); }).forEach(function (it) {
+    P.items.filter(function (it) { return it.section === sec && applies(it, v.type, v.format); }).forEach(function (it) {
       var prev = v.scores[it.item_id] || {}; state[it.item_id] = { score: prev.score === undefined || prev.score === '' ? '' : Number(prev.score), note: prev.note || '' };
       h += '<div class="item" id="it_' + it.item_id + '"><div class="t">' + it.item + '</div><div class="c">' + it.criteria + '</div><div class="scl"><span>1 = worst</span><span>5 = best</span></div><div class="sc">';
       var an = String(it.scale_5_3_1 || '').split('/').map(function (x) { return x.trim(); }), lab = { 5: an[0] || '', 3: an[1] || '', 1: an[2] || '' };
@@ -133,13 +133,16 @@ function send() {
 var FACTQ = [
   ['video_url', 'Video link (Frame.io: click the thumbnail once, copy the address)', 'text', ''], ['video', 'Video title', 'text', ''],
   ['brand', 'Brand', 'select', '|OPF|Foxtail'], ['type', 'Type', 'select', '|Event|Wedding|AI|Promo'],
+  ['format', 'Format', 'select', '|Full film|Highlight|Reel / short'],
   ['client', 'Client', 'text', ''], ['delivered', 'Delivered', 'date', ''], ['runtime', 'Runtime', 'text', 'e.g. 01:29'],
-  ['total_hours', 'Total hours, shoot + edit + revisions', 'text', 'e.g. shoot 2h, edit 4h, revision 1h'], ['edit_hours', 'Of which edit hours', 'text', ''],
-  ['revision_rounds', 'Revision rounds after first delivery', 'text', ''], ['rounds_in_contract', 'Rounds in contract', 'text', ''],
-  ['revision_cause', 'Main cause of revisions', 'select', '|none|us|client changed mind|unclear brief|mixed'],
-  ['lufs', 'Delivered loudness, LUFS', 'text', 'target about -14 social, -23 broadcast'],
-  ['client_words', 'Client reaction, their words pasted, not interpreted', 'area', ''], ['flagged', 'What they flagged', 'area', ''], ['praised', 'What they praised', 'area', ''],
-  ['rebooked', 'Outcome (3 months later): rebooked or referred', 'select', '|yes|no|in progress'], ['posted_response', "Posted on client's channel, and the response", 'area', '']
+  ['shoot_hours', 'Shoot hours', 'num', 'number only'], ['edit_hours', 'Edit hours', 'num', 'number only, first cut to delivery'], ['revision_hours', 'Revision hours', 'num', 'number only, 0 if none'],
+  ['revision_rounds', 'Revision rounds after first delivery', 'num', ''], ['rounds_in_contract', 'Rounds in contract', 'num', ''],
+  ['revision_cause', 'Main cause of revisions (required if rounds above 0)', 'select', '|none|us|client added a request|client changed mind|unclear brief|mixed'],
+  ['lufs', 'Delivered loudness, LUFS', 'text', 'measured on the final file, not the target'],
+  ['client_words', 'Client reaction, their words pasted as they wrote them', 'area', 'one place for everything they said, praise and complaints'],
+  ['flagged', 'What they asked to change', 'text', 'one line, or none'],
+  ['posted_response', "Posted on client's channel?", 'text', 'yes / no, plus the response if any'],
+  ['rebooked', 'Rebooked or referred (fill 3 months after delivery, leave blank until then)', 'select', '|yes|no']
 ];
 var mode = 'score';
 function tabs() {
@@ -176,7 +179,7 @@ function pickFact(v) {
     h += '<label>' + q[1] + (q[2] !== 'select' && q[3] ? ' <small>' + q[3] + '</small>' : '');
     if (q[2] === 'select') h += '<select class="w" id="f_' + q[0] + '">' + q[3].split('|').map(function (o) { return '<option' + (o === val ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>';
     else if (q[2] === 'area') h += '<textarea class="w" id="f_' + q[0] + '">' + esc(val) + '</textarea>';
-    else h += '<input class="w" type="' + (q[2] === 'date' ? 'date' : 'text') + '" id="f_' + q[0] + '" value="' + esc(val) + '">';
+    else h += '<input class="w" type="' + (q[2] === 'date' ? 'date' : q[2] === 'num' ? 'number' : 'text') + '"' + (q[2] === 'num' ? ' step="0.5" min="0"' : '') + ' id="f_' + q[0] + '" value="' + esc(val) + '">';
     h += '</label>';
   });
   var owner = P.role === 'owner', st = v && P.facts[v.video_id] ? String(P.facts[v.video_id].fact_status || '') : '';
@@ -194,6 +197,7 @@ function saveFact(v, approve) {
   var fact = {}; FACTQ.forEach(function (q) { fact[q[0]] = document.getElementById('f_' + q[0]).value; });
   var M = document.getElementById('fmsg');
   if (!fact.video.trim() || !fact.type) { M.className = 'msg err'; M.textContent = 'Video title and type are required.'; return; }
+  if (Number(fact.revision_rounds || 0) > 0 && (!fact.revision_cause || fact.revision_cause === 'none')) { M.className = 'msg err'; M.textContent = 'Revision rounds above 0 need a cause.'; return; }
   document.getElementById('fsend').disabled = true; M.className = 'msg'; M.textContent = 'Saving...';
   google.script.run.withSuccessHandler(function (r) {
     document.getElementById('fsend').disabled = false;
@@ -237,7 +241,7 @@ function loadReview(q) {
     r.videos.forEach(function (v) {
       h += '<div class="item"><div class="t">' + bar(v.avg) + ' &nbsp;<b>' + esc(v.title) + '</b> <span class="msg">' + v.video_id + ' · ' + esc(v.type) + '</span>' + (v.spread >= 1 ? ' <span class="draft">spread ' + v.spread.toFixed(1) + '</span>' : '') + '</div>';
       h += '<div class="c">' + Object.keys(v.raters).map(function (k) { return k + ' ' + v.raters[k].toFixed(1); }).join(' · ') + '</div>';
-      var f = []; if (v.hours) f.push('Hours: ' + esc(v.hours)); if (v.revisions !== '') f.push('Revisions: ' + esc(v.revisions) + (v.cause && v.cause !== 'none' ? ' (' + esc(v.cause) + ')' : '')); if (v.praised && v.praised !== 'none') f.push('Client praised: ' + esc(v.praised)); if (v.flagged && v.flagged !== 'none') f.push('Client flagged: ' + esc(v.flagged)); if (v.rebooked) f.push('Rebooked: ' + esc(v.rebooked));
+      var f = []; if (v.hours) f.push('Hours: ' + esc(v.hours)); if (v.revisions !== '') f.push('Revisions: ' + esc(v.revisions) + (v.cause && v.cause !== 'none' ? ' (' + esc(v.cause) + ')' : '')); if (v.praised && v.praised !== 'none') f.push('Client praised: ' + esc(v.praised)); if (v.words) f.push('Client said: ' + esc(v.words)); if (v.flagged && v.flagged !== 'none') f.push('Asked to change: ' + esc(v.flagged)); if (v.rebooked) f.push('Rebooked: ' + esc(v.rebooked));
       if (f.length) h += '<div class="c">' + f.join('<br>') + '</div>';
       if (v.summary.length) h += '<div class="c">' + v.summary.map(function (s) { return s.r + ' ' + ({ best_shot: 'best', first_fix: 'fix first', portfolio: 'portfolio' }[s.k] || s.k) + ': ' + esc(s.t); }).join('<br>') + '</div>';
       h += '</div>';
