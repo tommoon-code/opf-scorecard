@@ -196,6 +196,8 @@ function pickFact(v) {
 function saveFact(v, approve) {
   var fact = {}; FACTQ.forEach(function (q) { fact[q[0]] = document.getElementById('f_' + q[0]).value; });
   var M = document.getElementById('fmsg');
+  var hh = [['shoot', fact.shoot_hours], ['edit', fact.edit_hours], ['revision', fact.revision_hours]].filter(function (x) { return String(x[1] || '').trim() !== ''; });
+  if (hh.length) fact.total_hours = hh.map(function (x) { return x[0] + ' ' + String(x[1]).trim() + 'h'; }).join(', ');
   if (!fact.video.trim() || !fact.type) { M.className = 'msg err'; M.textContent = 'Video title and type are required.'; return; }
   if (Number(fact.revision_rounds || 0) > 0 && (!fact.revision_cause || fact.revision_cause === 'none')) { M.className = 'msg err'; M.textContent = 'Revision rounds above 0 need a cause.'; return; }
   document.getElementById('fsend').disabled = true; M.className = 'msg'; M.textContent = 'Saving...';
